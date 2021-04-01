@@ -72,4 +72,6 @@ void user_init(void)
      * –uxPriority:  prioriteta
      * –pxCreatedTask:  kazalec na opravilo
      */
+
+    // this is a comment
 }
