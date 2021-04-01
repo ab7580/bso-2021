@@ -74,4 +74,5 @@ void user_init(void)
      */
 
     // this is a comment
+	// this is another one
 }
