@@ -6,6 +6,7 @@
 #include "esp8266.h"
 #include "i2c/i2c.h"
 #include "bmp280/bmp280.h"
+#include "math.h"
 
 const int gpio = 2;
 
@@ -27,8 +28,9 @@ const int gpio = 2;
 
 bmp280_t bmp280_dev;
 
+const int pressuresSize = 10;
 float pressures[10];
-int pressure_index = 0;
+int pressureIndex = 0;
 
 // read BMP280 sensor values
 float read_bmp280_forced() {
@@ -70,33 +72,36 @@ void ReadPressureEverySecond(void) {
 void GetLastTenPressuresAverage(void) {
 	while (1) {
 		// if pressures[9] == 0 then we still haven't made 10 measurements
-		if (pressures[9] == 0) {
+		if (pressures[pressuresSize-1] == 0) {
 			puts("array not filled yet");
-			vTaskDelay((3 * 1000) / portTICK_PERIOD_MS);
+			vTaskDelay((pressuresSize * 1000) / portTICK_PERIOD_MS);
 			continue;
 		}
 
 		float avg = 0;
-		for (int i=0; i<10; ++i) {
+		for (int i=0; i<pressuresSize; ++i) {
 			avg += pressures[i];
 		}
-		printf("\n Average Pressure over last 10 measurements: %.2f Pa", avg);
+		avg = avg/pressuresSize;
+		printf("\n Average Pressure over last %d measurements: %.2f Pa",pressuresSize, avg);
 
-		vTaskDelay((3 * 1000) / portTICK_PERIOD_MS);
+		vTaskDelay((pressuresSize * 1000) / portTICK_PERIOD_MS);
 	}
 }
 
 void WriteToPressuresArray(float pressure) {
-	int i = pressure_index % 10;
+	int i = pressureIndex % pressuresSize;
 	pressures[i] = pressure;
-	pressure_index += 1;
+	pressureIndex += 1;
 }
 
 void InitPressuresArray() {
-	for (int i=0; i<10; i += 1){
+	for (int i=0; i<pressuresSize; i += 1){
 		pressures[i] = 0;
 	}
 }
+
+
 
 void user_init(void)
 {
@@ -117,6 +122,6 @@ void user_init(void)
 	bmp280_init(&bmp280_dev, &params);
 
     xTaskCreate(ReadPressureEverySecond, "ReadPressureEverySecond", 256, NULL, 2, NULL);
-    xTaskCreate(GetLastTenPressuresAverage, "ReadPressureEverySecond", 256, NULL, 3, NULL);
+    xTaskCreate(GetLastTenPressuresAverage, "GetLastTenPressuresAverage", 256, NULL, 3, NULL);
 }
 
