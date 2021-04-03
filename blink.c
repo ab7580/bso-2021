@@ -31,19 +31,15 @@ const int gpio = 2;
 
 bmp280_t bmp280_dev;
 
-typedef enum {
-	BMP280_TEMPERATURE, BMP280_PRESSURE
-} bmp280_quantity;
-
 // read BMP280 sensor values
 float read_bmp280() {
 
 	float temperature, pressure;
 
-	bmp280_force_measurement(&bmp280_dev);
+	//bmp280_force_measurement(&bmp280_dev);
 	// wait for measurement to complete
-	while (bmp280_is_measuring(&bmp280_dev)) {
-	};
+	//while (bmp280_is_measuring(&bmp280_dev)) {
+	//};
 	bmp280_read_float(&bmp280_dev, &temperature, &pressure, NULL);
 
 	return pressure;
@@ -72,13 +68,25 @@ void komunikacijaTask(void *pvParameters)
 	uint8_t data2 = led2;
 	uint8_t data3 = led3;
 	uint8_t data4 = led4;
+
+    // BMP280 configuration
+	bmp280_params_t params;
+	bmp280_init_default_params(&params);
+	params.mode = BMP280_MODE_NORMAL;
+	params.filter = BMP280_FILTER_4;
+	params.oversampling_pressure = BMP280_STANDARD;
+	params.standby = BMP280_STANDBY_500;
+	bmp280_dev.i2c_dev.bus = I2C_BUS;
+	bmp280_dev.i2c_dev.addr = BMP280_I2C_ADDRESS_0;
+	bmp280_init(&bmp280_dev, &params);
 	while(1){
 		i2c_slave_write(I2C_BUS, PCF_ADDRESS, NULL, &dataoff, 1);
 		i2c_slave_read(I2C_BUS, PCF_ADDRESS, NULL, &data, 1);
+		printf("\nAUTO: %.2f Pa", read_bmp280());
 		if((data & button1) == 0){
 			i2c_slave_write(I2C_BUS, PCF_ADDRESS, NULL, &data1, 1);
 			printf("\nBTN/LED1");
-			printf("Pressure: %.2f Pa\n", read_bmp280());
+			printf("\nPressure: %.2f Pa", read_bmp280());
 		}
 		if((data & button2) == 0){
 			i2c_slave_write(I2C_BUS, PCF_ADDRESS, NULL, &data2, 1);
@@ -130,14 +138,6 @@ void user_init(void)
     uart_set_baud(0, 115200);
     i2c_init(I2C_BUS, SCL_PIN, SDA_PIN, I2C_FREQ_100K);
 	gpio_enable(SCL_PIN, GPIO_OUTPUT);
-
-    // BMP280 configuration
-	bmp280_params_t params;
-	bmp280_init_default_params(&params);
-	params.mode = BMP280_MODE_FORCED;
-	bmp280_dev.i2c_dev.bus = I2C_BUS;
-	bmp280_dev.i2c_dev.addr = BMP280_I2C_ADDRESS_0;
-	bmp280_init(&bmp280_dev, &params);
 
     //xTaskCreate(blinkenTask, "blinkenTask", 256, NULL, 2, NULL);
     xTaskCreate(komunikacijaTask, "komunikacijaTask", 256, NULL, 2, NULL);
