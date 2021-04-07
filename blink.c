@@ -56,7 +56,13 @@ uint8_t read_byte_pcf() {
 	return data;
 }
 
-void ReadPressureEverySecond(void) {
+void WriteToPressuresArray(float pressure) {
+	int i = pressureIndex % pressuresSize;
+	pressures[i] = pressure;
+	pressureIndex += 1;
+}
+
+void ReadPressureEverySecond(void *pvParameters) {
 	while (1) {
 		float pressure = read_bmp280(BMP280_PRESSURE);
 		printf("\nPressure: %.2f Pa", pressure);
@@ -67,7 +73,7 @@ void ReadPressureEverySecond(void) {
 	}
 }
 
-void GetLastTenPressuresAverage(void) {
+void GetLastTenPressuresAverage(void *pvParameters) {
 	while (1) {
 		// if pressures[9] == 0 then we still haven't made 10 measurements
 		if (pressures[pressuresSize-1] == 0) {
@@ -87,12 +93,6 @@ void GetLastTenPressuresAverage(void) {
 	}
 }
 
-void WriteToPressuresArray(float pressure) {
-	int i = pressureIndex % pressuresSize;
-	pressures[i] = pressure;
-	pressureIndex += 1;
-}
-
 void InitPressuresArray() {
 	for (int i=0; i<pressuresSize; i += 1){
 		pressures[i] = 0;
@@ -101,82 +101,59 @@ void InitPressuresArray() {
 void komunikacijaTask(void *pvParameters)
 {
 	uint8_t data;
-	uint8_t dataoff = leds_off;
-	uint8_t data1 = led1;
-	//uint8_t data2 = led2;
-	//uint8_t data3 = led3;
-	uint8_t data4 = led4;
 	float bmpstart = 0;
 	float bmpcurr = 0;
 	float diff = 0;
 	int precision = 30;
 
 	while(1){
-		i2c_slave_write(I2C_BUS, PCF_ADDRESS, NULL, &dataoff, 1);
-		i2c_slave_read(I2C_BUS, PCF_ADDRESS, NULL, &data, 1);
+		write_byte_pcf(leds_off);
+
+		data = read_byte_pcf();
+
 		bmpcurr = read_bmp280(BMP280_PRESSURE);
+
 		printf("\nAUTO: %.2f Pa", bmpcurr);
 		printf("\nTEMP: %.2f C", read_bmp280(BMP280_TEMPERATURE));
-		//printf("\nHEIGHT: %.2f m", FromTemperatureAndPressure2(read_bmp280(BMP280_TEMPERATURE), bmpcurr));
+
 		if((data & button1) == 0){
-			//i2c_slave_write(I2C_BUS, PCF_ADDRESS, NULL, &data1, 1);
 			printf("\nBTN/LED1");
 			bmpstart = bmpcurr;
 			printf("\nStart: %.2f Pa", bmpstart);
 		}
-		/*if((data & button2) == 0){
-			i2c_slave_write(I2C_BUS, PCF_ADDRESS, NULL, &data2, 1);
-			printf("\nBTN/LED2");
-		}
-		if((data & button3) == 0){
-			i2c_slave_write(I2C_BUS, PCF_ADDRESS, NULL, &data3, 1);
-			printf("\nBTN/LED3");
-		}
-		if((data & button4) == 0){
-			i2c_slave_write(I2C_BUS, PCF_ADDRESS, NULL, &data4, 1);
-			printf("\nBTN/LED4");
-		}*/
 		diff = bmpcurr-bmpstart;
+
 		// - pomeni, da je trenutno visje
 		if(diff < 0){
 			if(diff>-1*precision){
-				i2c_slave_write(I2C_BUS, PCF_ADDRESS, NULL, &data1, 1);
+				write_byte_pcf(led1);
 			}
 			else if(diff>-2*precision){
-				uint8_t datax = led1 & led2;
-				i2c_slave_write(I2C_BUS, PCF_ADDRESS, NULL, &datax, 1);
+				write_byte_pcf(led1 & led2);
 			}
 			else if(diff>-3*precision){
-				uint8_t datax = led1 & led2 & led3;
-				i2c_slave_write(I2C_BUS, PCF_ADDRESS, NULL, &datax, 1);
+				write_byte_pcf(led1 & led2 & led3);
 			}
 			else{
-				uint8_t datax = led1 & led2 & led3 & led4;
-				i2c_slave_write(I2C_BUS, PCF_ADDRESS, NULL, &datax, 1);
+				write_byte_pcf(led1 & led2 & led3 & led4);
 			}
 		}
 		// + pomeni, da je trenutno nizje
 		else{
 			if(diff<precision){
-				i2c_slave_write(I2C_BUS, PCF_ADDRESS, NULL, &data4, 1);
+				write_byte_pcf(led4);
 			}
 			else if(diff<2*precision){
-				uint8_t datax = led4 & led3;
-				i2c_slave_write(I2C_BUS, PCF_ADDRESS, NULL, &datax, 1);
+				write_byte_pcf(led4 & led3);
 			}
 			else if(diff<3*precision){
-				uint8_t datax = led4 & led3 & led2;
-				i2c_slave_write(I2C_BUS, PCF_ADDRESS, NULL, &datax, 1);
+				write_byte_pcf(led4 & led3 & led2);
 			}
 			else{
-				uint8_t datax = led1 & led2 & led3 & led4;
-				i2c_slave_write(I2C_BUS, PCF_ADDRESS, NULL, &datax, 1);
+				write_byte_pcf(led1 & led2 & led3 & led4);
 			}
 		}
         vTaskDelay(500 / portTICK_PERIOD_MS);
-    	//uint8_t datax = led1 & led2 & led3 & led4;
-		//i2c_slave_write(I2C_BUS, PCF_ADDRESS, NULL, &datax, 1);
-        //vTaskDelay(500 / portTICK_PERIOD_MS);
 	}
 }
 
