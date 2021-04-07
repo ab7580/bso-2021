@@ -74,31 +74,36 @@ void ReadPressureEverySecond(void *pvParameters) {
 	}
 }
 
-void GetLastTenPressuresAverage(void *pvParameters) {
+void InitPressuresArray() {
+	for (int i=0; i<pressuresSize; i += 1){
+		pressures[i] = 0;
+	}
+	pressureIndex = 0;
+}
+
+void GetPressuresAverage(void *pvParameters) {
 	while (1) {
 		// if pressures[9] == 0 then we still haven't made 10 measurements
 		if (pressures[pressuresSize-1] == 0) {
 			puts("array not filled yet");
-			vTaskDelay((pressuresSize * 1000) / portTICK_PERIOD_MS);
+			vTaskDelay(1000 / portTICK_PERIOD_MS);
 			continue;
 		}
 
 		float avg = 0;
-		for (int i=0; i<pressuresSize; ++i) {
+		for (int i = 0; i < pressuresSize; ++i) {
 			avg += pressures[i];
 		}
 		avg = avg/pressuresSize;
 		printf("\n Average Pressure over last %d measurements: %.2f Pa",pressuresSize, avg);
 
-		vTaskDelay((pressuresSize * 1000) / portTICK_PERIOD_MS);
+		// place all 0s in the array now, so that you wait for full 10 new measurements before getting another average
+		InitPressuresArray();
+
+		vTaskDelay(1000 / portTICK_PERIOD_MS);
 	}
 }
 
-void InitPressuresArray() {
-	for (int i=0; i<pressuresSize; i += 1){
-		pressures[i] = 0;
-	}
-}
 void komunikacijaTask(void *pvParameters)
 {
 	uint8_t data;
@@ -237,7 +242,7 @@ void user_init(void)
 	bmp280_dev.i2c_dev.addr = BMP280_I2C_ADDRESS_0;
 	bmp280_init(&bmp280_dev, &params);
     // xTaskCreate(ReadPressureEverySecond, "ReadPressureEverySecond", 256, NULL, 2, NULL);
-    // xTaskCreate(GetLastTenPressuresAverage, "GetLastTenPressuresAverage", 256, NULL, 3, NULL);
+    // xTaskCreate(GetPressuresAverage, "GetPressuresAverage", 256, NULL, 3, NULL);
 	// xTaskCreate(komunikacijaTask, "komunikacijaTask", 256, NULL, 2, NULL);
 	xTaskCreate(MasterTask, "MasterTask", 256, NULL, 3, NULL);
 }
