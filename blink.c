@@ -217,7 +217,6 @@ SemaphoreHandle_t xSemaphoreB = NULL;
 	vTaskDelete(NULL);
  }
 
-
 void user_init(void)
 {
 	InitPressuresArray();
@@ -237,9 +236,9 @@ void user_init(void)
 	bmp280_dev.i2c_dev.bus = I2C_BUS;
 	bmp280_dev.i2c_dev.addr = BMP280_I2C_ADDRESS_0;
 	bmp280_init(&bmp280_dev, &params);
-
     // xTaskCreate(ReadPressureEverySecond, "ReadPressureEverySecond", 256, NULL, 2, NULL);
     // xTaskCreate(GetLastTenPressuresAverage, "GetLastTenPressuresAverage", 256, NULL, 3, NULL);
 	// xTaskCreate(komunikacijaTask, "komunikacijaTask", 256, NULL, 2, NULL);
 	xTaskCreate(MasterTask, "MasterTask", 256, NULL, 3, NULL);
 }
+
