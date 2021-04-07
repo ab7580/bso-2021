@@ -44,18 +44,6 @@ float read_bmp280(bmp280_quantity quantity) {
 	}
 	return pressure;
 }
-float read_bmp280_forced() {
-
-	float temperature, pressure;
-
-	bmp280_force_measurement(&bmp280_dev);
-	// wait for measurement to complete
-	while (bmp280_is_measuring(&bmp280_dev)) {
-	};
-	bmp280_read_float(&bmp280_dev, &temperature, &pressure, NULL);
-
-	return pressure;
-}
 
 void write_byte_pcf(uint8_t data) {
 	i2c_slave_write(I2C_BUS, PCF_ADDRESS, NULL, &data, 1);
@@ -64,21 +52,20 @@ void write_byte_pcf(uint8_t data) {
 
 uint8_t read_byte_pcf() {
 	uint8_t data;
-
-		i2c_slave_read(I2C_BUS, PCF_ADDRESS, NULL, &data, 1);
+	i2c_slave_read(I2C_BUS, PCF_ADDRESS, NULL, &data, 1);
 	return data;
-		}
+}
 
 void ReadPressureEverySecond(void) {
 	while (1) {
-		float pressure = read_bmp280_forced();
+		float pressure = read_bmp280(BMP280_PRESSURE);
 		printf("\nPressure: %.2f Pa", pressure);
 
 		WriteToPressuresArray(pressure);
 
 		vTaskDelay(1000 / portTICK_PERIOD_MS);
-		}
-		}
+	}
+}
 
 void GetLastTenPressuresAverage(void) {
 	while (1) {
@@ -87,24 +74,24 @@ void GetLastTenPressuresAverage(void) {
 			puts("array not filled yet");
 			vTaskDelay((pressuresSize * 1000) / portTICK_PERIOD_MS);
 			continue;
-			}
+		}
 
 		float avg = 0;
 		for (int i=0; i<pressuresSize; ++i) {
 			avg += pressures[i];
-			}
+		}
 		avg = avg/pressuresSize;
 		printf("\n Average Pressure over last %d measurements: %.2f Pa",pressuresSize, avg);
 
 		vTaskDelay((pressuresSize * 1000) / portTICK_PERIOD_MS);
-			}
-			}
+	}
+}
 
 void WriteToPressuresArray(float pressure) {
 	int i = pressureIndex % pressuresSize;
 	pressures[i] = pressure;
 	pressureIndex += 1;
-		}
+}
 
 void InitPressuresArray() {
 	for (int i=0; i<pressuresSize; i += 1){
@@ -204,8 +191,8 @@ void user_init(void)
 
 	bmp280_params_t params;
 	bmp280_init_default_params(&params);
-	params.mode = BMP280_MODE_FORCED;
-	// params.mode = BMP280_MODE_NORMAL;
+	// params.mode = BMP280_MODE_FORCED;
+	params.mode = BMP280_MODE_NORMAL;
 	params.filter = BMP280_FILTER_4; // for better accuracy
 	params.oversampling_pressure = BMP280_STANDARD;
 	params.oversampling_temperature = BMP280_FILTER_4;
