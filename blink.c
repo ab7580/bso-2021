@@ -6,7 +6,6 @@
 #include "esp8266.h"
 #include "i2c/i2c.h"
 #include "bmp280/bmp280.h"
-#include "semphr.h"
 
 const int gpio = 2;
 
@@ -31,6 +30,10 @@ bmp280_t bmp280_dev;
 const int pressuresSize = 10;
 float pressures[10];
 int pressureIndex = 0;
+int measureSpeed = 500;
+float bmpstart = 0;
+short pascalPerMeter = 12;
+int multiplier = 30;
 
 typedef enum {
 	BMP280_TEMPERATURE, BMP280_PRESSURE
@@ -66,7 +69,7 @@ void WriteToPressuresArray(float pressure) {
 void ReadPressureEverySecond(void *pvParameters) {
 	while (1) {
 		float pressure = read_bmp280(BMP280_PRESSURE);
-		printf("\nPressure: %.2f Pa", pressure);
+		printf("Pressure: %.2f Pa\n", pressure);
 
 		WriteToPressuresArray(pressure);
 
@@ -95,7 +98,7 @@ void GetPressuresAverage(void *pvParameters) {
 			avg += pressures[i];
 		}
 		avg = avg/pressuresSize;
-		printf("\n Average Pressure over last %d measurements: %.2f Pa",pressuresSize, avg);
+		printf("Average Pressure over last %d measurements: %.2f Pa\n",pressuresSize, avg);
 
 		// place all 0s in the array now, so that you wait for full 10 new measurements before getting another average
 		InitPressuresArray();
@@ -104,30 +107,32 @@ void GetPressuresAverage(void *pvParameters) {
 	}
 }
 
-void komunikacijaTask(void *pvParameters)
+void readerTask(void *pvParameters)
 {
-	uint8_t data;
-	float bmpstart = 0;
 	float bmpcurr = 0;
 	float diff = 0;
-	int precision = 30;
+	short i = 0;
+	int precision;
 
 	while(1){
 		write_byte_pcf(leds_off);
 
-		data = read_byte_pcf();
-
 		bmpcurr = read_bmp280(BMP280_PRESSURE);
 
-		printf("\nAUTO: %.2f Pa", bmpcurr);
-		printf("\nTEMP: %.2f C", read_bmp280(BMP280_TEMPERATURE));
+		//printf("AUTO: %.2f Pa\n", bmpcurr);
+		//printf("TEMP: %.2f C\n", read_bmp280(BMP280_TEMPERATURE));
+		printf("%.2f;%.2f\n", bmpcurr, read_bmp280(BMP280_TEMPERATURE));
 
-		if((data & button1) == 0){
-			printf("\nBTN/LED1");
-			bmpstart = bmpcurr;
-			printf("\nStart: %.2f Pa", bmpstart);
-		}
 		diff = bmpcurr-bmpstart;
+
+		if(bmpstart == 0 && i == 3){
+			bmpstart = bmpcurr;
+		}
+		else if(i<3){
+			i++;
+		}
+
+		precision = multiplier * pascalPerMeter;
 
 		// - pomeni, da je trenutno visje
 		if(diff < 0){
@@ -159,91 +164,108 @@ void komunikacijaTask(void *pvParameters)
 				write_byte_pcf(led1 & led2 & led3 & led4);
 			}
 		}
-        vTaskDelay(500 / portTICK_PERIOD_MS);
+        vTaskDelay(measureSpeed / portTICK_PERIOD_MS);
 	}
 }
 
-SemaphoreHandle_t xSemaphoreA = NULL;
-SemaphoreHandle_t xSemaphoreB = NULL;
+//every 30s reset the start altitude so lights show change constantly / with time
+void resetPressure( void * pvParameters )
+{
+	while(1){
+		bmpstart = read_bmp280(BMP280_PRESSURE);
+		printf("AUTO Pressure reset\n");
+		vTaskDelay(30000 / portTICK_PERIOD_MS);
+	}
+}
 
- void TaskA( void * pvParameters )
- {
-	while(1) {
-	    if( xSemaphoreA != NULL )
-	    {
-	        if( xSemaphoreTake( xSemaphoreA, 0 ) == pdTRUE )
-	        {
-	        	xSemaphoreGive(xSemaphoreA);
-	            puts("taskA");
-	        }
-	    }
-	    vTaskDelay(2000 / portTICK_PERIOD_MS);
-	}
-	vTaskDelete(NULL);
- }
- void TaskB( void * pvParameters )
- {
-	while(1) {
-	    if( xSemaphoreB != NULL )
-	    {
-	        if( xSemaphoreTake( xSemaphoreB, 0 ) == pdTRUE )
-	        {
-	        	xSemaphoreGive(xSemaphoreB);
-	            puts("taskB");
-	        }
-	    }
-	    vTaskDelay(2000 / portTICK_PERIOD_MS);
-	}
-	vTaskDelete(NULL);
- }
- void MasterTask( void * pvParameters )
- {
+//slower, larger difference for LED display, less accurate
+void initB()
+{
+	printf("initB ");
+	bmp280_params_t params;
+	bmp280_init_default_params(&params);
+	params.mode = BMP280_MODE_NORMAL;
+	params.filter = BMP280_FILTER_4;
+	params.oversampling_pressure = BMP280_ULTRA_HIGH_RES;
+	params.oversampling_temperature = BMP280_FILTER_2;
+	params.standby = BMP280_STANDBY_500;
+	bmp280_init(&bmp280_dev, &params);
+	measureSpeed = 500;
+	multiplier = 30; // 1 LED = 30 meter difference
+	printf(", complete\n");
+}
+
+//faster, smaller difference for LED display, best accuracy
+void initA()
+{
+	printf("initA ");
+	bmp280_params_t params;
+	bmp280_init_default_params(&params);
+	params.mode = BMP280_MODE_NORMAL;
+	params.filter = BMP280_FILTER_16;
+	params.oversampling_pressure = BMP280_STANDARD;
+	params.oversampling_temperature = BMP280_FILTER_4;
+	params.standby = BMP280_STANDBY_250;
+	bmp280_init(&bmp280_dev, &params);
+	measureSpeed = 250;
+	multiplier = 2; // 1 LED = 2 meter difference
+	printf(", complete\n");
+}
+
+void buttonTask( void * pvParameters )
+{
 	int8_t data;
-	xSemaphoreA = xSemaphoreCreateBinary();
-	xSemaphoreB = xSemaphoreCreateBinary();
-	xSemaphoreTake(xSemaphoreA, 0);
-	xSemaphoreTake(xSemaphoreB, 0);
-	xTaskCreate(TaskA, "TaskA", 256, NULL, 2, NULL);
-	xTaskCreate(TaskB, "TaskB", 256, NULL, 2, NULL);
+	bool tA = false;
+	TaskHandle_t xHandle;
+	bool pressureAuto = false;
 	while(1) {
 		data = read_byte_pcf();
-		if((data & button1) == 0){
-			printf("\nBTN/LED1 - enable task B, disable task A");
-			xSemaphoreTake(xSemaphoreA, 10);
-			xSemaphoreGive(xSemaphoreB);
+		if((data & button1) == 0 && tA){
+			printf("BTN1 - change to std accuracy\n");
+			initB();
+			tA = false;
 		}
-		if ((data & button2) == 0) {
-			printf("\nBTN/LED2 - enable task A, disable task B");
-			xSemaphoreTake(xSemaphoreB, 10);
-			xSemaphoreGive(xSemaphoreA);
+		if ((data & button2) == 0 && !tA) {
+			printf("BTN2 - change to high accuracy\n");
+			initA();
+			tA = true;
+		}
+		// manual pressure reset
+		if((data & button3) == 0){
+			printf("BTN3 - set pressure\n");
+			bmpstart = read_bmp280(BMP280_PRESSURE);
+			printf("Pressure: %.2f Pa\n", bmpstart);
+			if(pressureAuto){
+				printf("End auto reset\n");
+				vTaskDelete(xHandle);
+				pressureAuto = false;
+			}
+		}
+		// automatic pressure reset every 30s
+		if((data & button4) == 0 && !pressureAuto){
+			printf("BTN4 - start auto reset\n");
+			xTaskCreate(resetPressure, "resetPressure", 256, NULL, 4, &xHandle);
+			pressureAuto = true;
 		}
 		vTaskDelay(100 / portTICK_PERIOD_MS);
 	}
-	vTaskDelete(NULL);
- }
+}
 
 void user_init(void)
 {
-	InitPressuresArray();
+	//InitPressuresArray();
 
     uart_set_baud(0, 115200);
     i2c_init(I2C_BUS, SCL_PIN, SDA_PIN, I2C_FREQ_100K);
 	gpio_enable(SCL_PIN, GPIO_OUTPUT);
 
-	bmp280_params_t params;
-	bmp280_init_default_params(&params);
-	// params.mode = BMP280_MODE_FORCED;
-	params.mode = BMP280_MODE_NORMAL;
-	params.filter = BMP280_FILTER_4; // for better accuracy
-	params.oversampling_pressure = BMP280_STANDARD;
-	params.oversampling_temperature = BMP280_FILTER_4;
-	params.standby = BMP280_STANDBY_500;
 	bmp280_dev.i2c_dev.bus = I2C_BUS;
 	bmp280_dev.i2c_dev.addr = BMP280_I2C_ADDRESS_0;
-	bmp280_init(&bmp280_dev, &params);
+	initB();
+
     // xTaskCreate(ReadPressureEverySecond, "ReadPressureEverySecond", 256, NULL, 2, NULL);
     // xTaskCreate(GetPressuresAverage, "GetPressuresAverage", 256, NULL, 3, NULL);
-	// xTaskCreate(komunikacijaTask, "komunikacijaTask", 256, NULL, 2, NULL);
-	xTaskCreate(MasterTask, "MasterTask", 256, NULL, 3, NULL);
+	xTaskCreate(buttonTask, "buttonTask", 256, NULL, 3, NULL);
+	xTaskCreate(readerTask, "readerTask", 256, NULL, 2, NULL);
 }
 
