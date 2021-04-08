@@ -6,6 +6,7 @@
 #include "esp8266.h"
 #include "i2c/i2c.h"
 #include "bmp280/bmp280.h"
+#include "semphr.h"
 
 const int gpio = 2;
 
@@ -73,31 +74,36 @@ void ReadPressureEverySecond(void *pvParameters) {
 	}
 }
 
-void GetLastTenPressuresAverage(void *pvParameters) {
+void InitPressuresArray() {
+	for (int i=0; i<pressuresSize; i += 1){
+		pressures[i] = 0;
+	}
+	pressureIndex = 0;
+}
+
+void GetPressuresAverage(void *pvParameters) {
 	while (1) {
 		// if pressures[9] == 0 then we still haven't made 10 measurements
 		if (pressures[pressuresSize-1] == 0) {
 			puts("array not filled yet");
-			vTaskDelay((pressuresSize * 1000) / portTICK_PERIOD_MS);
+			vTaskDelay(1000 / portTICK_PERIOD_MS);
 			continue;
 		}
 
 		float avg = 0;
-		for (int i=0; i<pressuresSize; ++i) {
+		for (int i = 0; i < pressuresSize; ++i) {
 			avg += pressures[i];
 		}
 		avg = avg/pressuresSize;
 		printf("\n Average Pressure over last %d measurements: %.2f Pa",pressuresSize, avg);
 
-		vTaskDelay((pressuresSize * 1000) / portTICK_PERIOD_MS);
+		// place all 0s in the array now, so that you wait for full 10 new measurements before getting another average
+		InitPressuresArray();
+
+		vTaskDelay(1000 / portTICK_PERIOD_MS);
 	}
 }
 
-void InitPressuresArray() {
-	for (int i=0; i<pressuresSize; i += 1){
-		pressures[i] = 0;
-	}
-}
 void komunikacijaTask(void *pvParameters)
 {
 	uint8_t data;
@@ -157,6 +163,64 @@ void komunikacijaTask(void *pvParameters)
 	}
 }
 
+SemaphoreHandle_t xSemaphoreA = NULL;
+SemaphoreHandle_t xSemaphoreB = NULL;
+
+ void TaskA( void * pvParameters )
+ {
+	while(1) {
+	    if( xSemaphoreA != NULL )
+	    {
+	        if( xSemaphoreTake( xSemaphoreA, 0 ) == pdTRUE )
+	        {
+	        	xSemaphoreGive(xSemaphoreA);
+	            puts("taskA");
+	        }
+	    }
+	    vTaskDelay(2000 / portTICK_PERIOD_MS);
+	}
+	vTaskDelete(NULL);
+ }
+ void TaskB( void * pvParameters )
+ {
+	while(1) {
+	    if( xSemaphoreB != NULL )
+	    {
+	        if( xSemaphoreTake( xSemaphoreB, 0 ) == pdTRUE )
+	        {
+	        	xSemaphoreGive(xSemaphoreB);
+	            puts("taskB");
+	        }
+	    }
+	    vTaskDelay(2000 / portTICK_PERIOD_MS);
+	}
+	vTaskDelete(NULL);
+ }
+ void MasterTask( void * pvParameters )
+ {
+	int8_t data;
+	xSemaphoreA = xSemaphoreCreateBinary();
+	xSemaphoreB = xSemaphoreCreateBinary();
+	xSemaphoreTake(xSemaphoreA, 0);
+	xSemaphoreTake(xSemaphoreB, 0);
+	xTaskCreate(TaskA, "TaskA", 256, NULL, 2, NULL);
+	xTaskCreate(TaskB, "TaskB", 256, NULL, 2, NULL);
+	while(1) {
+		data = read_byte_pcf();
+		if((data & button1) == 0){
+			printf("\nBTN/LED1 - enable task B, disable task A");
+			xSemaphoreTake(xSemaphoreA, 10);
+			xSemaphoreGive(xSemaphoreB);
+		}
+		if ((data & button2) == 0) {
+			printf("\nBTN/LED2 - enable task A, disable task B");
+			xSemaphoreTake(xSemaphoreB, 10);
+			xSemaphoreGive(xSemaphoreA);
+		}
+		vTaskDelay(100 / portTICK_PERIOD_MS);
+	}
+	vTaskDelete(NULL);
+ }
 
 void user_init(void)
 {
@@ -177,9 +241,9 @@ void user_init(void)
 	bmp280_dev.i2c_dev.bus = I2C_BUS;
 	bmp280_dev.i2c_dev.addr = BMP280_I2C_ADDRESS_0;
 	bmp280_init(&bmp280_dev, &params);
-
-    xTaskCreate(ReadPressureEverySecond, "ReadPressureEverySecond", 256, NULL, 2, NULL);
-    xTaskCreate(GetLastTenPressuresAverage, "GetLastTenPressuresAverage", 256, NULL, 3, NULL);
-	xTaskCreate(komunikacijaTask, "komunikacijaTask", 256, NULL, 2, NULL);
+    // xTaskCreate(ReadPressureEverySecond, "ReadPressureEverySecond", 256, NULL, 2, NULL);
+    // xTaskCreate(GetPressuresAverage, "GetPressuresAverage", 256, NULL, 3, NULL);
+	// xTaskCreate(komunikacijaTask, "komunikacijaTask", 256, NULL, 2, NULL);
+	xTaskCreate(MasterTask, "MasterTask", 256, NULL, 3, NULL);
 }
 
