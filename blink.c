@@ -35,6 +35,8 @@ float bmpstart = 0;
 short pascalPerMeter = 12;
 int multiplier = 30;
 
+int globalIndex = 0;
+
 typedef enum {
 	BMP280_TEMPERATURE, BMP280_PRESSURE
 } bmp280_quantity;
@@ -65,13 +67,25 @@ void WriteToPressuresArray(float pressure) {
 	pressures[i] = pressure;
 	pressureIndex += 1;
 }
-
 void ReadPressureEverySecond(void *pvParameters) {
 	while (1) {
 		float pressure = read_bmp280(BMP280_PRESSURE);
-		printf("Pressure: %.2f Pa\n", pressure);
+		printf("\n %.2f;%d",pressure, globalIndex);
+		globalIndex += 1;
+		// WriteToPressuresArray(pressure);
 
-		WriteToPressuresArray(pressure);
+		vTaskDelay(1000 / portTICK_PERIOD_MS);
+	}
+}
+
+
+void ReadPressureAndTemperatureEverySecond(void *pvParameters) {
+	while (1) {
+		float pressure = read_bmp280(BMP280_PRESSURE);
+		float temperature = read_bmp280(BMP280_TEMPERATURE);
+		printf("\n %.2f;%.2f;%d",pressure, temperature, globalIndex);
+		globalIndex += 1;
+		// WriteToPressuresArray(pressure);
 
 		vTaskDelay(1000 / portTICK_PERIOD_MS);
 	}
@@ -88,7 +102,6 @@ void GetPressuresAverage(void *pvParameters) {
 	while (1) {
 		// if pressures[9] == 0 then we still haven't made 10 measurements
 		if (pressures[pressuresSize-1] == 0) {
-			puts("array not filled yet");
 			vTaskDelay(1000 / portTICK_PERIOD_MS);
 			continue;
 		}
@@ -98,7 +111,8 @@ void GetPressuresAverage(void *pvParameters) {
 			avg += pressures[i];
 		}
 		avg = avg/pressuresSize;
-		printf("Average Pressure over last %d measurements: %.2f Pa\n",pressuresSize, avg);
+		// printf("\n Average Pressure over last %d measurements: %.2f Pa",pressuresSize, avg);
+		printf("\n %d;%.2f",globalIndex, avg);
 
 		// place all 0s in the array now, so that you wait for full 10 new measurements before getting another average
 		InitPressuresArray();
@@ -106,6 +120,7 @@ void GetPressuresAverage(void *pvParameters) {
 		vTaskDelay(1000 / portTICK_PERIOD_MS);
 	}
 }
+
 
 void readerTask(void *pvParameters)
 {
