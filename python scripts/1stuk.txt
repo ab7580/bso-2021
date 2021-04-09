@@ -1,0 +1,3 @@
+average temperature: 14.015537634408602
+average pressure: 91763.90063709677
+determined altitude for 1stuk.log is: 840.8476247787962
