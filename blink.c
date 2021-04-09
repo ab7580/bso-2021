@@ -32,6 +32,8 @@ const int pressuresSize = 10;
 float pressures[10];
 int pressureIndex = 0;
 
+int globalIndex = 0;
+
 typedef enum {
 	BMP280_TEMPERATURE, BMP280_PRESSURE
 } bmp280_quantity;
@@ -66,9 +68,21 @@ void WriteToPressuresArray(float pressure) {
 void ReadPressureEverySecond(void *pvParameters) {
 	while (1) {
 		float pressure = read_bmp280(BMP280_PRESSURE);
-		printf("\nPressure: %.2f Pa", pressure);
+		printf("\n %.2f;%d",pressure, globalIndex);
+		globalIndex += 1;
+		// WriteToPressuresArray(pressure);
 
-		WriteToPressuresArray(pressure);
+		vTaskDelay(1000 / portTICK_PERIOD_MS);
+	}
+}
+
+void ReadPressureAndTemperatureEverySecond(void *pvParameters) {
+	while (1) {
+		float pressure = read_bmp280(BMP280_PRESSURE);
+		float temperature = read_bmp280(BMP280_TEMPERATURE);
+		printf("\n %.2f;%.2f;%d",pressure, temperature, globalIndex);
+		globalIndex += 1;
+		// WriteToPressuresArray(pressure);
 
 		vTaskDelay(1000 / portTICK_PERIOD_MS);
 	}
@@ -85,7 +99,6 @@ void GetPressuresAverage(void *pvParameters) {
 	while (1) {
 		// if pressures[9] == 0 then we still haven't made 10 measurements
 		if (pressures[pressuresSize-1] == 0) {
-			puts("array not filled yet");
 			vTaskDelay(1000 / portTICK_PERIOD_MS);
 			continue;
 		}
@@ -95,7 +108,8 @@ void GetPressuresAverage(void *pvParameters) {
 			avg += pressures[i];
 		}
 		avg = avg/pressuresSize;
-		printf("\n Average Pressure over last %d measurements: %.2f Pa",pressuresSize, avg);
+		// printf("\n Average Pressure over last %d measurements: %.2f Pa",pressuresSize, avg);
+		printf("\n %d;%.2f",globalIndex, avg);
 
 		// place all 0s in the array now, so that you wait for full 10 new measurements before getting another average
 		InitPressuresArray();
@@ -235,15 +249,16 @@ void user_init(void)
 	// params.mode = BMP280_MODE_FORCED;
 	params.mode = BMP280_MODE_NORMAL;
 	params.filter = BMP280_FILTER_4; // for better accuracy
-	params.oversampling_pressure = BMP280_STANDARD;
+	params.oversampling_pressure = BMP280_FILTER_4;
 	params.oversampling_temperature = BMP280_FILTER_4;
 	params.standby = BMP280_STANDBY_500;
 	bmp280_dev.i2c_dev.bus = I2C_BUS;
 	bmp280_dev.i2c_dev.addr = BMP280_I2C_ADDRESS_0;
 	bmp280_init(&bmp280_dev, &params);
+	xTaskCreate(ReadPressureAndTemperatureEverySecond, "ReadPressureAndTemperatureEverySecond", 256, NULL, 2, NULL);
     // xTaskCreate(ReadPressureEverySecond, "ReadPressureEverySecond", 256, NULL, 2, NULL);
     // xTaskCreate(GetPressuresAverage, "GetPressuresAverage", 256, NULL, 3, NULL);
 	// xTaskCreate(komunikacijaTask, "komunikacijaTask", 256, NULL, 2, NULL);
-	xTaskCreate(MasterTask, "MasterTask", 256, NULL, 3, NULL);
+	// xTaskCreate(MasterTask, "MasterTask", 256, NULL, 3, NULL);
 }
 
