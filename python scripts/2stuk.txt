@@ -1,3 +1,0 @@
-average temperature: 17.562285322359397
-average pressure: 91671.84945404663
-determined altitude for 2stuk.log is: 859.9347933124186
